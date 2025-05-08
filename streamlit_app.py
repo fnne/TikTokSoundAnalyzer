@@ -88,11 +88,40 @@ filter_mode = st.radio("Filter label:", ["All","UGC","DistroKid"], horizontal=Tr
 if filter_mode != "All":
     ranked = ranked[ranked['Label']==filter_mode]
 
-st.write(f"## Top {min(30,len(ranked))} ({filter_mode})")
-st.dataframe(ranked.head(30)[[
-    'Song Name','Artist','Label','meta_song_isrc',
-    'views_this_week','views_growth_rate','share_rate','fav_rate','creations_this_week','engagement_score'
-]], use_container_width=True)
+st.write(f"## Top {min(30, len(ranked))} ({filter_mode})")
+
+# ── 1) Add a ‘Spotify’ column upfront with a clickable link ──
+def make_spotify_link(isrc: str) -> str:
+    url = f"https://open.spotify.com/search/isrc:{isrc}"
+    return f"[🔗]({url})"
+
+ranked.insert(
+    0,                       # position 0 = first column
+    "Spotify",               # column name
+    ranked["meta_song_isrc"].apply(make_spotify_link)
+)
+
+# ── 2) Pick the exact columns (including our new one) ──
+display_cols = [
+    "Spotify",
+    "Song Name",
+    "Artist",
+    "Label",
+    "meta_song_isrc",
+    "views_this_week",
+    "views_growth_rate",
+    "share_rate",
+    "fav_rate",
+    "creations_this_week",
+    "engagement_score",
+]
+df_display = ranked.head(30)[display_cols]
+
+# ── 3) Render as HTML so links stay clickable ──
+st.markdown(
+    df_display.to_html(escape=False, index=False),
+    unsafe_allow_html=True
+)
 
 # 7) Export button
 buf = io.BytesIO()
