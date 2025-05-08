@@ -250,12 +250,18 @@ while True:
 
         window['STATUS'].update('📥 Saved → ' + out.name)
     
-    # Click a row → open Spotify by ISRC
+    # … inside your `while True:` event loop …
+
+    # -------------- Click a row → open Spotify by ISRC --------------
     if event == '-TABLE-' and preview_df is not None:
-        sel = vals['-TABLE-']           # list of selected row indices
+        print("TABLE event!", vals['-TABLE-'])   # <-- debug: see the selected row indices
+        sel = vals['-TABLE-']                     # list of selected row indices
         if sel:
-            isrc = preview_df.iloc[sel[0]]['ISRC']
-            webbrowser.open(f"https://open.spotify.com/search/isrc:{isrc}")
+            row_idx = sel[0]
+            isrc    = preview_df.iloc[row_idx]['ISRC']
+            url     = f"https://open.spotify.com/search/isrc:{isrc}"
+            print("Opening:", url)                # <-- debug: check URL
+            webbrowser.open(url)
     
         # -------------- Filter to UGC / DistroKid --------------
     # -------------- Filter to UGC only --------------
