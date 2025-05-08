@@ -249,14 +249,14 @@ while True:
         df_out.to_excel(out, index=False)
 
         window['STATUS'].update('📥 Saved → ' + out.name)
-
+    
     # Click a row → open Spotify by ISRC
     if event == '-TABLE-' and preview_df is not None:
-        sel = vals['-TABLE-']
+        sel = vals['-TABLE-']           # list of selected row indices
         if sel:
             isrc = preview_df.iloc[sel[0]]['ISRC']
             webbrowser.open(f"https://open.spotify.com/search/isrc:{isrc}")
-
+    
         # -------------- Filter to UGC / DistroKid --------------
     # -------------- Filter to UGC only --------------
     if event == '-FILTER-UGC-' and df_full is not None:
@@ -279,6 +279,10 @@ while True:
             'ID','Title','Artist','Label','ISRC',
             'Views','Growth','Share %','Fav %','Creations','Score'
         ]]
+        # ← NEW: add the URL text into its own column
+        preview_df['Spotify Link'] = preview_df['ISRC'].apply(
+            lambda isrc: f"https://open.spotify.com/search/isrc:{isrc}"
+        )
         window['-TABLE-'].update(values=preview_df.values.tolist(), visible=True)
         window['STATUS'].update(f'🔎 Showing {len(filtered)} UGC entries')
 
