@@ -96,32 +96,33 @@ def make_spotify_link(isrc: str) -> str:
     # Return an actual HTML link
     return f'<a href="{url}" target="_blank">🔗</a>'
 
+# 6b) Build a “Spotify” column of _plain_ URLs (no HTML).
 ranked.insert(
-    0,                       # position 0 = first column
-    "Spotify",               # column name
-    ranked["meta_song_isrc"].apply(make_spotify_link)
+    0,
+    "Spotify",
+    ranked["meta_song_isrc"].apply(
+        lambda isrc: f"https://open.spotify.com/search/isrc:{isrc}"
+    ),
 )
 
-# ── 2) Pick the exact columns (including our new one) ──
-display_cols = [
-    "Spotify",
-    "Song Name",
-    "Artist",
-    "Label",
-    "meta_song_isrc",
-    "views_this_week",
-    "views_growth_rate",
-    "share_rate",
-    "fav_rate",
-    "creations_this_week",
-    "engagement_score",
-]
-df_display = ranked.head(30)[display_cols]
-
-# ── 3) Render as HTML so links stay clickable ──
-st.markdown(
-    df_display.to_html(escape=False, index=False),
-    unsafe_allow_html=True
+# 7) Show an interactive, sortable & scrollable table of the top 30
+st.write(f"## Top {min(30, len(ranked))} ({filter_mode})")
+st.dataframe(
+    ranked.head(30)[[
+        "Spotify",
+        "Song Name",
+        "Artist",
+        "Label",
+        "meta_song_isrc",
+        "views_this_week",
+        "views_growth_rate",
+        "share_rate",
+        "fav_rate",
+        "creations_this_week",
+        "engagement_score",
+    ]],
+    use_container_width=True,
+    height=600,   # adjust as you like
 )
 
 # 7) Export button
