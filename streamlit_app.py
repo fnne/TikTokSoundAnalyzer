@@ -93,7 +93,8 @@ st.write(f"## Top {min(30, len(ranked))} ({filter_mode})")
 # ── 1) Add a ‘Spotify’ column upfront with a clickable link ──
 def make_spotify_link(isrc: str) -> str:
     url = f"https://open.spotify.com/search/isrc:{isrc}"
-    return f"[🔗]({url})"
+    # Return an actual HTML link
+    return f'<a href="{url}" target="_blank">🔗</a>'
 
 ranked.insert(
     0,                       # position 0 = first column
