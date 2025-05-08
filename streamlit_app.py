@@ -88,8 +88,6 @@ filter_mode = st.radio("Filter label:", ["All","UGC","DistroKid"], horizontal=Tr
 if filter_mode != "All":
     ranked = ranked[ranked['Label']==filter_mode]
 
-st.write(f"## Top {min(30, len(ranked))} ({filter_mode})")
-
 # ── 1) Add a ‘Spotify’ column upfront with a clickable link ──
 def make_spotify_link(isrc: str) -> str:
     url = f"https://open.spotify.com/search/isrc:{isrc}"
