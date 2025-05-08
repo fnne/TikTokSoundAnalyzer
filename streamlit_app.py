@@ -97,6 +97,9 @@ def make_spotify_link(isrc: str) -> str:
     return f'<a href="{url}" target="_blank">🔗</a>'
 
 # 6b) Build a “Spotify” column of _plain_ URLs (no HTML).
+# after you’ve built `ranked` and done your filtering…
+
+# build a plain-URL column in front:
 ranked.insert(
     0,
     "Spotify",
@@ -105,10 +108,11 @@ ranked.insert(
     ),
 )
 
-# 7) Show an interactive, sortable & scrollable table of the top 30
+# now show the top-30 with a real URL column
 st.write(f"## Top {min(30, len(ranked))} ({filter_mode})")
 st.dataframe(
-    ranked.head(30)[[
+    ranked
+    .head(30)[[
         "Spotify",
         "Song Name",
         "Artist",
@@ -122,7 +126,13 @@ st.dataframe(
         "engagement_score",
     ]],
     use_container_width=True,
-    height=600,   # adjust as you like
+    height=600,
+    column_config={
+        "Spotify": st.column_config.LinkColumn(
+            "Search on Spotify",
+            help="Click to open in Spotify"
+        )
+    }
 )
 
 # 7) Export button
