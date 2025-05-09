@@ -114,7 +114,7 @@ layout = [
     [sg.Table(
         values=[], headings=["ID","Title","Artist","Label","ISRC","Views","Growth",
                              "Share %","Fav %","Creations","Score"],
-        key="-TABLE-", visible=False, num_rows=30,
+        key="-TABLE-", visible=False, num_rows=100,
         expand_x=True, expand_y=True, enable_events=True
     )]
 ]
@@ -165,7 +165,7 @@ while True:
 
     if event == "-DONE-":
         df_full = vals["-DONE-"]
-        preview = df_full.head(30).copy()
+        preview = df_full.head(100).copy()
         preview["ID"]    = preview["Clip ID"].astype(str).str[:-6]
         preview["Title"] = preview["Song Name"]
         preview["Score"] = preview["engagement_score"]
@@ -185,11 +185,11 @@ while True:
     if event in ("-UGC-","-DK-") and df_full is not None:
         label = "UGC" if event=="-UGC-" else "DistroKid"
         filtered = df_full[df_full.Label == label].reset_index(drop=True)
-        preview30 = filtered.head(30).copy()
-        preview30["ID"] = preview30["Clip ID"].astype(str).str[:-6]
-        preview30["Title"] = preview30["Song Name"]
-        preview30["Score"] = preview30["engagement_score"]
-        preview_df = preview30[["ID","Title","Artist","Label","ISRC",
+        preview100 = filtered.head(100).copy()
+        preview100["ID"] = preview100["Clip ID"].astype(str).str[:-6]
+        preview100["Title"] = preview100["Song Name"]
+        preview100["Score"] = preview100["engagement_score"]
+        preview_df = preview100[["ID","Title","Artist","Label","ISRC",
                                 "views_this_week","views_growth_rate",
                                 "share_rate","fav_rate","creations_this_week","Score"]]
         window["-TABLE-"].update(values=preview_df.values)
