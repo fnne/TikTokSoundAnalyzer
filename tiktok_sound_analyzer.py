@@ -93,6 +93,14 @@ def clean_df(df_raw):
         if must_have not in df.columns:
             df[must_have] = ''
 
+        # ——— make sure our downstream columns always exist ———
+    # string columns default to empty string, numeric to 0
+    for col in ['Song Name','Artist','Label','meta_song_isrc']:
+        if col not in df.columns:
+            df[col] = ''
+    if 'creations_this_week' not in df.columns:
+        df['creations_this_week'] = 0
+
     return df
 
 def rank_df(df, raw_weights, window):
