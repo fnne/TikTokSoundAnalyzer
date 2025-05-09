@@ -19,18 +19,32 @@ import PySimpleGUI as sg
 
 def find_header_row(df):
     for i, row in df.iterrows():
-        if row.astype(str).str.contains('song name', case=False, na=False).any():
+        if row.astype(str).str.contains('song name', case=False, na=False).any() \
+        or row.astype(str).str.contains('Clip id',   case=False, na=False).any():
             return i
-    raise ValueError("Can't find a header row containing 'Song Name'")
+    raise ValueError("Can't find a header row containing 'Song Name' or 'Clip id'")
 
 def clean_df(df_raw):
+    # 1) find the true header row
     hdr = find_header_row(df_raw)
+
+    # 2) set the DataFrame columns from that row
     df_raw.columns = df_raw.iloc[hdr].astype(str)
     df = df_raw.iloc[hdr+1:].reset_index(drop=True)
-    # drop unit‐row
-    if df.shape[0] and df.iloc[0].astype(str).str.contains('unit', case=False, na=False).any():
+
+    # 3) drop an optional "unit" row
+    if (
+        df.shape[0] > 0
+        and df.iloc[0].astype(str)
+               .str.contains('unit', case=False, na=False)
+               .any()
+    ):
         df = df.iloc[1:].reset_index(drop=True)
+
+    # 4) trim whitespace
     df.columns = df.columns.str.strip()
+
+    # 5) standardize your numeric columns
     rename_map = {
         'VV This Week':           'views_this_week',
         'VV Last Week':           'views_last_week',
@@ -42,15 +56,43 @@ def clean_df(df_raw):
         'Delta Creations':        'delta_creations'
     }
     df = df.rename(columns=rename_map)
-    # numeric coercion
-    for col in ['views_this_week','views_last_week',
-                'shares_this_week','favorites_this_week',
-                'delta_views','delta_creations']:
+    for col in [
+        'views_this_week','views_last_week',
+        'shares_this_week','favorites_this_week',
+        'delta_views','delta_creations','creations_this_week'
+    ]:
         df[col] = pd.to_numeric(df.get(col, 0), errors='coerce').fillna(0)
+
+    # 6) compute growth
     df['views_growth_rate'] = (
         (df['views_this_week'] - df['views_last_week'])
         / df['views_last_week'].replace(0, np.nan)
     ).fillna(0)
+
+    # 7) map *all* your metadata into a fixed set of column names
+    metadata_map = {
+        'Clip id':            'Clip ID',
+        'clip id':            'Clip ID',
+        'Clip name':          'Song Name',
+        'Song Name':          'Song Name',
+        'Meta Song Name':     'Song Name',
+        'meta_song_name':     'Song Name',
+        'Meta Artist':        'Artist',
+        'Artist':             'Artist',
+        'meta_artist':        'Artist',
+        'Meta Song ID':       'Song ID',    # if you need it
+        'Song ID':            'Song ID',
+        'meta_song_isrc':     'ISRC',
+        'ISRC':               'ISRC',
+        'Label':              'Label',
+    }
+    df = df.rename(columns=metadata_map)
+
+    # 8) ensure *all* of those exist
+    for must_have in ['Clip ID','Song Name','Artist','Label','ISRC']:
+        if must_have not in df.columns:
+            df[must_have] = ''
+
     return df
 
 def rank_df(df, raw_weights, window):
