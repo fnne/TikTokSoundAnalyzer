@@ -88,18 +88,20 @@ def clean_df(df_raw):
     }
     df = df.rename(columns=metadata_map)
 
-    # 8) ensure *all* of those exist
-    for must_have in ['Clip ID','Song Name','Artist','Label','ISRC']:
-        if must_have not in df.columns:
-            df[must_have] = ''
-
-        # ——— make sure our downstream columns always exist ———
-    # string columns default to empty string, numeric to 0
-    for col in ['Song Name','Artist','Label','meta_song_isrc']:
+    # 8) ensure all metadata columns exist (text → empty string)
+    for col in ['Clip ID','Song Name','Artist','Label','ISRC']:
         if col not in df.columns:
             df[col] = ''
-    if 'creations_this_week' not in df.columns:
-        df['creations_this_week'] = 0
+
+    # 9) ensure all metric columns exist (numeric → 0)
+    for col in [
+        'views_this_week','views_last_week',
+        'shares_this_week','favorites_this_week',
+        'delta_views','delta_creations','creations_this_week',
+        'views_growth_rate'
+    ]:
+        if col not in df.columns:
+            df[col] = 0
 
     return df
 
@@ -248,7 +250,7 @@ while True:
         top10['Title']  = top10['Song Name']
         top10['Artist'] = top10['Artist']
         top10['Label']  = top10['Label']
-        top10['ISRC']   = top10['meta_song_isrc']
+        # (we already renamed `meta_song_isrc` → `ISRC` in clean_df, so no extra step needed)
 
         # 3) Computed metrics
         top10['Views']     = top10['views_this_week']
