@@ -97,36 +97,6 @@ def rank_df(df, weights, window):
     window.write_event_value('-PROG-', 100)
     return df2
 
-# ------------ GUI layout ------------
-
-if hasattr(sg, 'theme'): sg.theme('DarkGrey12')
-else:                 sg.ChangeLookAndFeel('DarkGrey12')
-
-layout = [
-    [sg.Text('Export File:'), sg.Input(key='FILE', readonly=True, expand_x=True), sg.Button('Browse', key='-BROWSE-')],
-    [sg.Column([
-        [sg.Text('Total views', size=(14,1)), sg.Slider((0,10),5,orientation='h',size=(40,15),key='w0',enable_events=True), sg.Text('5.00',key='v0')],
-        [sg.Text('WoW growth',  size=(14,1)), sg.Slider((0,10),2,orientation='h',size=(40,15),key='w1',enable_events=True), sg.Text('2.00',key='v1')],
-        [sg.Text('Share %',      size=(14,1)), sg.Slider((0,10),3,orientation='h',size=(40,15),key='w2',enable_events=True), sg.Text('3.00',key='v2')],
-        [sg.Text('Fav %',        size=(14,1)), sg.Slider((0,10),1,orientation='h',size=(40,15),key='w3',enable_events=True), sg.Text('1.00',key='v3')],
-        [sg.Text('Creations',    size=(14,1)), sg.Slider((0,10),1,orientation='h',size=(40,15),key='w4',enable_events=True), sg.Text('1.00',key='v4')],
-    ], expand_x=True)],
-    [sg.Button('Process',key='-PROCESS-'),
-     sg.Button('Show UGC',key='-FILTER-UGC-',disabled=True),
-     sg.Button('Show DistroKid',key='-FILTER-DK-',disabled=True),
-     sg.Button('Save',key='-SAVE-',disabled=True)],
-    [sg.Text('',key='STATUS',size=(60,1))],
-    [sg.ProgressBar(100,orientation='h',size=(40,10),key='-PROG-',visible=False)],
-    [sg.Table(values=[],
-              headings=['ID','Song Name','Artist','Label','ISRC','Views','Growth','Share %','Fav %','Creations','Score'],
-              key='-TABLE-',visible=False,auto_size_columns=True,
-              num_rows=30,enable_events=True,expand_x=True,expand_y=True)]
-]
-
-window = sg.Window('TikTok Viral-Sound Analyzer', layout, finalize=True, resizable=True, size=(1200,800))
-
-df_full = current_df = preview_df = None
-
 def update_labels(vals):
     for i in range(5):
         window[f'v{i}'].update(f"{vals[f'w{i}']:.2f}")
