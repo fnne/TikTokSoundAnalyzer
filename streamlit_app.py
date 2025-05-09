@@ -134,7 +134,7 @@ ranked.insert(0, "🔗", ranked.ISRC.apply(
 ranked = ranked.loc[:, ~ranked.columns.duplicated()]
 
 # ─── 6) Display top-30 ────────────────────────────────────────────────────────
-disp = ranked.head(30)[
+disp = ranked.head(100)[
     ["🔗", "Clip ID", "Song Name", "Artist", "Label", "ISRC"]
     + [c for c in ranked.columns if c not in {"🔗","Clip ID","Song Name","Artist","Label","ISRC"}]
 ]
