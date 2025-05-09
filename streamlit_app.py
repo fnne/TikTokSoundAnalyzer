@@ -1,52 +1,38 @@
 #!/usr/bin/env python3
-import streamlit as st
-import pandas as pd
+import os
+import webbrowser
+import threading
+import time
+from pathlib import Path
+
 import numpy as np
-import io
+import pandas as pd
+import PySimpleGUI as sg
 
-st.set_page_config(page_title="TikTok Viral-Sound Analyzer", layout="wide")
-st.title("TikTok Viral-Sound Analyzer")
+# load license from env
+PySimpleGUI_License = os.getenv("PYSG_LICENSE", "")
 
-# 1️⃣ File uploader
-uploaded = st.file_uploader(
-    "Upload your TikTok export (.xlsx or .csv)",
-    type=["xlsx", "csv"]
-)
-if not uploaded:
-    st.info("Please upload an export to get started.")
-    st.stop()
+# -------------- Core logic --------------
 
-# 2️⃣ Load raw
-@st.cache_data
-def load_raw(f):
-    if f.name.lower().endswith(".csv"):
-        return pd.read_csv(f, header=None)
-    else:
-        return pd.read_excel(f, header=None)
-
-raw = load_raw(uploaded)
-
-# 3️⃣ Clean & unify US / Brazil formats
 def find_header_row(df):
-    for i, row in df.iterrows():
-        lower = row.astype(str).str.lower()
-        if lower.str.contains("song name", na=False).any() or lower.str.contains("clip id", na=False).any():
+    for i,row in df.iterrows():
+        txt = row.astype(str).str.lower()
+        if "song name" in txt.values or "clip id" in txt.values:
             return i
-    raise ValueError("No header row with 'Song Name' or 'Clip id' found.")
+    raise ValueError("Can't find a header row containing 'Song Name' or 'Clip id'")
 
 def clean_df(df_raw):
     hdr = find_header_row(df_raw)
     df_raw.columns = df_raw.iloc[hdr].astype(str)
     df = df_raw.iloc[hdr+1:].reset_index(drop=True)
 
-    # drop optional “unit” row
-    if (df.shape[0] > 0
-        and df.iloc[0].astype(str).str.contains("unit", case=False, na=False).any()):
+    # drop optional unit row
+    if df.shape[0] and df.iloc[0].astype(str).str.contains('unit', case=False, na=False).any():
         df = df.iloc[1:].reset_index(drop=True)
 
     df.columns = df.columns.str.strip()
 
-    # numeric columns map
+    # numeric renames
     num_map = {
         'VV This Week':           'views_this_week',
         'VV Last Week':           'views_last_week',
@@ -58,16 +44,17 @@ def clean_df(df_raw):
         'Delta Creations':        'delta_creations'
     }
     df = df.rename(columns=num_map)
-    for c in num_map.values():
-        df[c] = pd.to_numeric(df.get(c, 0), errors='coerce').fillna(0)
+    for c in ['views_this_week','views_last_week',
+              'shares_this_week','favorites_this_week',
+              'delta_views','delta_creations','creations_this_week']:
+        df[c] = pd.to_numeric(df.get(c,0), errors='coerce').fillna(0)
 
-    # growth rate
     df['views_growth_rate'] = (
         (df['views_this_week'] - df['views_last_week'])
         / df['views_last_week'].replace(0, np.nan)
     ).fillna(0)
 
-    # metadata map
+    # metadata renames
     meta_map = {
         'Clip id':            'Clip ID',
         'clip id':            'Clip ID',
@@ -85,100 +72,148 @@ def clean_df(df_raw):
     }
     df = df.rename(columns=meta_map)
 
-    # ensure existence of every field
-    for txt in ['Clip ID','Song Name','Artist','Label','ISRC']:
-        if txt not in df.columns:
-            df[txt] = ""
-    # ensure creations even if missing
-    if 'creations_this_week' not in df.columns:
-        df['creations_this_week'] = 0
+    # ← DROP ANY DUPLICATE COLUMN NAMES ←
+    df = df.loc[:, ~df.columns.duplicated()]
+
+    # ensure all exist
+    for col in ['Clip ID','Song Name','Artist','Label','ISRC']:
+        if col not in df.columns:
+            df[col] = ''
+    for col in ['views_this_week','views_last_week',
+                'shares_this_week','favorites_this_week',
+                'delta_views','delta_creations','creations_this_week',
+                'views_growth_rate']:
+        if col not in df.columns:
+            df[col] = 0
 
     return df
 
-df = clean_df(raw)
-
-# 4️⃣ Ranking logic
-@st.cache_data
-def rank_df(df, weights):
+def rank_df(df, weights, window):
     w = np.array(weights, dtype=float)
-    w = w / w.sum() if w.sum()>0 else np.ones_like(w)/len(w)
+    w = w/w.sum() if w.sum()>0 else np.ones_like(w)/len(w)
+    for pct in range(0,90,10):
+        window.write_event_value('-PROG-', pct)
+        time.sleep(0.02)
     df2 = df.copy()
-    df2['share_rate'] = np.where(
-        df2.views_this_week>0,
-        df2.shares_this_week  / df2.views_this_week * 100,
-        0
-    )
-    df2['fav_rate'] = np.where(
-        df2.views_this_week>0,
-        df2.favorites_this_week / df2.views_this_week * 100,
-        0
-    )
+    df2['share_rate'] = np.where(df2.views_this_week>0,
+                                 df2.shares_this_week/df2.views_this_week*100, 0)
+    df2['fav_rate']   = np.where(df2.views_this_week>0,
+                                 df2.favorites_this_week/df2.views_this_week*100, 0)
     dims = ['views_this_week','views_growth_rate','share_rate','fav_rate','creations_this_week']
     ranks = {c: df2[c].rank(pct=True) for c in dims}
     df2['engagement_score'] = sum(ranks[c]*w[i] for i,c in enumerate(dims))
-    return df2.sort_values('engagement_score', ascending=False).reset_index(drop=True)
+    df2 = df2.sort_values('engagement_score', ascending=False).reset_index(drop=True)
+    window.write_event_value('-PROG-', 100)
+    return df2
 
-# 5️⃣ Sidebar sliders
-st.sidebar.header("Weight Sliders")
-w0 = st.sidebar.slider("Total Views", 0.0, 10.0, 5.0)
-w1 = st.sidebar.slider("WoW Growth",  0.0, 10.0, 2.0)
-w2 = st.sidebar.slider("Share Rate",  0.0, 10.0, 3.0)
-w3 = st.sidebar.slider("Fav Rate",    0.0, 10.0, 1.0)
-w4 = st.sidebar.slider("Creations",   0.0, 10.0, 1.0)
+# ------------ GUI layout ------------
 
-# 6️⃣ Apply ranking & filtering
-with st.spinner("Ranking…"):
-    ranked = rank_df(df, [w0,w1,w2,w3,w4])
+if hasattr(sg, 'theme'): sg.theme('DarkGrey12')
+else:                 sg.ChangeLookAndFeel('DarkGrey12')
 
-filter_mode = st.radio("Filter label:", ["All","UGC","DistroKid"], horizontal=True)
-if filter_mode != "All":
-    ranked = ranked[ranked['Label']==filter_mode]
+layout = [
+    [sg.Text('Export File:'), sg.Input(key='FILE', readonly=True, expand_x=True), sg.Button('Browse', key='-BROWSE-')],
+    [sg.Column([
+        [sg.Text('Total views', size=(14,1)), sg.Slider((0,10),5,orientation='h',size=(40,15),key='w0',enable_events=True), sg.Text('5.00',key='v0')],
+        [sg.Text('WoW growth',  size=(14,1)), sg.Slider((0,10),2,orientation='h',size=(40,15),key='w1',enable_events=True), sg.Text('2.00',key='v1')],
+        [sg.Text('Share %',      size=(14,1)), sg.Slider((0,10),3,orientation='h',size=(40,15),key='w2',enable_events=True), sg.Text('3.00',key='v2')],
+        [sg.Text('Fav %',        size=(14,1)), sg.Slider((0,10),1,orientation='h',size=(40,15),key='w3',enable_events=True), sg.Text('1.00',key='v3')],
+        [sg.Text('Creations',    size=(14,1)), sg.Slider((0,10),1,orientation='h',size=(40,15),key='w4',enable_events=True), sg.Text('1.00',key='v4')],
+    ], expand_x=True)],
+    [sg.Button('Process',key='-PROCESS-'),
+     sg.Button('Show UGC',key='-FILTER-UGC-',disabled=True),
+     sg.Button('Show DistroKid',key='-FILTER-DK-',disabled=True),
+     sg.Button('Save',key='-SAVE-',disabled=True)],
+    [sg.Text('',key='STATUS',size=(60,1))],
+    [sg.ProgressBar(100,orientation='h',size=(40,10),key='-PROG-',visible=False)],
+    [sg.Table(values=[],
+              headings=['ID','Song Name','Artist','Label','ISRC','Views','Growth','Share %','Fav %','Creations','Score'],
+              key='-TABLE-',visible=False,auto_size_columns=True,
+              num_rows=30,enable_events=True,expand_x=True,expand_y=True)]
+]
 
-# 7️⃣ Insert clean ASCII “Spotify” link column
-ranked.insert(
-    0,
-    "Spotify",
-    ranked["ISRC"].astype(str).apply(
-        lambda isrc: f"https://open.spotify.com/search/isrc:{isrc}"
-    )
-)
+window = sg.Window('TikTok Viral-Sound Analyzer', layout, finalize=True, resizable=True, size=(1200,800))
 
-# 8️⃣ Prepare DataFrame to display (coerce dtypes)
-df_disp = ranked.head(30)[[
-    "Spotify","Clip ID","Song Name","Artist","Label","ISRC",
-    "views_this_week","views_growth_rate","share_rate",
-    "fav_rate","creations_this_week","engagement_score"
-]].copy()
+df_full = current_df = preview_df = None
 
-# cast all textual to str
-for c in ["Spotify","Clip ID","Song Name","Artist","Label","ISRC"]:
-    df_disp[c] = df_disp[c].astype(str)
+def update_labels(vals):
+    for i in range(5):
+        window[f'v{i}'].update(f"{vals[f'w{i}']:.2f}")
 
-# cast all numeric to float
-for c in ["views_this_week","views_growth_rate","share_rate","fav_rate","creations_this_week","engagement_score"]:
-    df_disp[c] = pd.to_numeric(df_disp[c], errors="coerce").fillna(0).astype(float)
+while True:
+    event, vals = window.read(timeout=100)
+    if event in (sg.WIN_CLOSED, None): break
+    if event in [f'w{i}' for i in range(5)]: update_labels(vals)
 
-st.write(f"## Top {len(df_disp)} ({filter_mode})")
-st.dataframe(
-    df_disp,
-    use_container_width=True,
-    height=600,
-    column_config={
-        "Spotify": st.column_config.LinkColumn(
-            "Open in Spotify",
-            help="Click to search this ISRC on Spotify"
+    if event=='-BROWSE-':
+        threading.Thread(target=lambda: window.write_event_value('-FILE-', sg.popup_get_file(
+            'Select TikTok export', file_types=[('Excel','*.xlsx'),('CSV','*.csv')], no_window=True
+        )), daemon=True).start()
+
+    if event=='-FILE-' and vals['-FILE-']: window['FILE'].update(vals['-FILE-'])
+
+    if event=='-PROCESS-':
+        path=vals['FILE']
+        if not path:
+            window['STATUS'].update('⚠️ Select a file first'); continue
+        window['STATUS'].update('🔄 Loading & ranking…')
+        window['-PROG-'].update(0,visible=True)
+        threading.Thread(target=lambda: window.write_event_value('-DONE-', rank_df(
+            clean_df(pd.read_csv(path,header=None) if path.lower().endswith('.csv') else pd.read_excel(path,header=None)),
+            [vals[f'w{i}'] for i in range(5)], window
+        )),daemon=True).start()
+
+    if event=='-PROG-':
+        window['-PROG-'].update(vals['-PROG-'])
+
+    if event=='-DONE-':
+        df_full = vals['-DONE-']; current_df = df_full
+        top = df_full.head(30).copy()
+        top['ID']       = top['Clip ID'].astype(str).str[:-6]
+        top['Views']    = top['views_this_week']
+        top['Growth']   = top['views_growth_rate']
+        top['Share %']  = top['share_rate']
+        top['Fav %']    = top['fav_rate']
+        top['Creations']= top['creations_this_week']
+        top['Score']    = top['engagement_score']
+        preview_df = top[['ID','Song Name','Artist','Label','ISRC','Views','Growth','Share %','Fav %','Creations','Score']]
+        window['-TABLE-'].update(values=preview_df.values.tolist(), visible=True)
+        window['-FILTER-UGC-'].update(disabled=False)
+        window['-FILTER-DK-'].update(disabled=False)
+        window['-SAVE-'].update(disabled=False)
+        window['STATUS'].update(f'✅ Ranked {len(df_full)} rows')
+        window['-PROG-'].update(visible=False)
+
+    if event=='-SAVE-' and current_df is not None:
+        out = Path(vals['FILE']).with_name(Path(vals['FILE']).stem + '_ranked.xlsx')
+        i = 1
+        while out.exists():
+            out = out.with_name(f"{out.stem}_{i}.xlsx"); i+=1
+        df_out = current_df.copy()
+        df_out['Spotify Link'] = df_out['ISRC'].astype(str).apply(
+            lambda isrc: f'=HYPERLINK("https://open.spotify.com/search/isrc:{isrc}", "{isrc}")'
         )
-    }
-)
+        df_out.to_excel(out, index=False)
+        window['STATUS'].update('📥 Saved → ' + out.name)
 
-# 9️⃣ Download button
-buf = io.BytesIO()
-to_export = ranked if filter_mode=="All" else ranked[ranked['Label']==filter_mode]
-to_export.to_excel(buf, index=False)
-buf.seek(0)
-st.download_button(
-    "Download Excel",
-    buf,
-    file_name="ranked_sounds.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+    if event=='-TABLE-' and preview_df is not None:
+        sel = vals['-TABLE-']
+        if sel:
+            isrc = preview_df.iloc[sel[0]]['ISRC']
+            webbrowser.open(f"https://open.spotify.com/search/isrc:{isrc}")
+
+    if event=='-FILTER-UGC-' and df_full is not None:
+        filtered = df_full[df_full['Label']=='UGC']
+        current_df = filtered
+        top = filtered.head(30).copy()
+        # (same prep as above) …
+        # then window['-TABLE-'].update(...)
+
+    if event=='-FILTER-DK-' and df_full is not None:
+        filtered = df_full[df_full['Label']=='DistroKid']
+        current_df = filtered
+        top = filtered.head(30).copy()
+        # (same prep as above) …
+        # then window['-TABLE-'].update(...)
+
+window.close()
