@@ -1,16 +1,8 @@
-#!/usr/bin/env python3
-import os
-import webbrowser
-import threading
-import time
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-import PySimpleGUI as sg
-
-# load license from env
-PySimpleGUI_License = os.getenv("PYSG_LICENSE", "")
++#!/usr/bin/env python3
++import streamlit as st
++import pandas as pd
++import numpy as np
++import io
 
 # -------------- Core logic --------------
 
