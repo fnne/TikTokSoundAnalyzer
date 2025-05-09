@@ -29,11 +29,12 @@ def load_raw(f):
         return pd.read_excel(f, header=None)
 raw = load_raw(uploaded)
 
-# 3) Clean & compute (unify US + Brazil formats)
+# 3) Clean & unify US/Brazil formats
 def find_header_row(df):
     for i, row in df.iterrows():
         txt = row.astype(str).str.lower()
-        if txt.str.contains("song name", na=False).any() or txt.str.contains("clip id", na=False).any():
+        if txt.str.contains("song name", na=False).any() \
+        or txt.str.contains("clip id", na=False).any():
             return i
     raise ValueError("No header row with 'Song Name' or 'Clip id'")
 
@@ -42,15 +43,16 @@ def clean_df(df_raw):
     df_raw.columns = df_raw.iloc[hdr].astype(str)
     df = df_raw.iloc[hdr+1:].reset_index(drop=True)
 
-    # drop optional unit row
-    if (df.shape[0] > 0 and
-        df.iloc[0].astype(str).str.contains("unit", case=False, na=False).any()):
+    # drop optional “unit” row
+    if (df.shape[0] > 0
+        and df.iloc[0].astype(str)
+               .str.contains("unit", case=False, na=False)
+               .any()):
         df = df.iloc[1:].reset_index(drop=True)
 
-    # strip whitespace
     df.columns = df.columns.str.strip()
 
-    # 3a) numeric columns
+    # numeric columns
     num_map = {
         'VV This Week':           'views_this_week',
         'VV Last Week':           'views_last_week',
@@ -67,13 +69,12 @@ def clean_df(df_raw):
               'delta_views','delta_creations','creations_this_week']:
         df[c] = pd.to_numeric(df.get(c, 0), errors='coerce').fillna(0)
 
-    # growth rate
     df['views_growth_rate'] = (
         (df['views_this_week'] - df['views_last_week'])
         / df['views_last_week'].replace(0, np.nan)
     ).fillna(0)
 
-    # 3b) metadata columns
+    # metadata columns
     meta_map = {
         'Clip id':            'Clip ID',
         'clip id':            'Clip ID',
@@ -91,10 +92,10 @@ def clean_df(df_raw):
     }
     df = df.rename(columns=meta_map)
 
-    # ensure all exist
-    for text_col in ['Clip ID','Song Name','Artist','Label','ISRC']:
-        if text_col not in df.columns:
-            df[text_col] = ""
+    # ensure existence
+    for txt in ['Clip ID','Song Name','Artist','Label','ISRC']:
+        if txt not in df.columns:
+            df[txt] = ""
     return df
 
 df = clean_df(raw)
@@ -130,24 +131,26 @@ filter_mode = st.radio("Filter label:", ["All","UGC","DistroKid"], horizontal=Tr
 if filter_mode != "All":
     ranked = ranked[ranked['Label']==filter_mode]
 
-# 7) Insert clickable Spotify link column
+# 7) Insert ASCII “Spotify” link column
 ranked.insert(
     0,
-    "🎵",
-    ranked["ISRC"].apply(lambda isrc: f"https://open.spotify.com/search/isrc:{isrc}")
+    "Spotify",
+    ranked["ISRC"].astype(str).apply(
+        lambda isrc: f"https://open.spotify.com/search/isrc:{isrc}"
+    )
 )
 
 st.write(f"## Top {min(30, len(ranked))} ({filter_mode})")
 st.dataframe(
     ranked.head(30)[[
-        "🎵","Clip ID","Song Name","Artist","Label","ISRC",
+        "Spotify","Clip ID","Song Name","Artist","Label","ISRC",
         "views_this_week","views_growth_rate","share_rate",
         "fav_rate","creations_this_week","engagement_score"
     ]],
     use_container_width=True,
     height=600,
     column_config={
-        "🎵": st.column_config.LinkColumn(
+        "Spotify": st.column_config.LinkColumn(
             "Open in Spotify",
             help="Click to search this ISRC on Spotify"
         )
